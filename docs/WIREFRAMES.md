@@ -21,7 +21,7 @@ Unauthenticated users who visit a protected route are redirected to `/login`.
 ```mermaid
 flowchart TD
     A[Open Juno] --> B{Authenticated?}
-    B -- No --> C[Logn or Register]
+    B -- No --> C[Login or Register]
     C --> D[Dashboard]
     B -- Yes --> D
     D --> E[View Tasks]
@@ -52,7 +52,7 @@ Desktop pages use a shared sidebar and header.
 
 On mobile, the sidebar becomes a compact navigation menu.
 
-## 4. Login Oage
+## 4. Login Page
 
 ```text
 +---------------------------------------------------------------+
