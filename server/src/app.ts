@@ -1,0 +1,38 @@
+import cookieParser from 'cookie-parser'
+import cors from 'cors'
+import express from 'express'
+import helmet from 'helmet'
+import { pinoHttp } from 'pino-http'
+import { env } from './config/env.js'
+import { logger } from './lib/logger.js'
+
+export const app = express()
+
+app.disable('x-powered-by')
+
+app.use(pinoHttp({ logger }))
+app.use(helmet())
+app.use(
+    cors({
+        origin: env.CLIENT_ORIGIN,
+        credentials: true,
+    }),
+)
+app.use(express.json())
+app.use(cookieParser())
+
+app.get('/api/v1/health', (_request, response) => {
+    response.status(200).json({
+        status: 'ok',
+        service: 'juno-api',
+    })
+})
+
+app.use((_request, response) => {
+    response.status(404).json({
+        error: {
+            code: 'NOT_FOUND',
+            message: 'Route not found',
+        },
+    })
+})
