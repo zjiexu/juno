@@ -1,5 +1,10 @@
-import 'dotenv/config'
+import path from 'node:path'
+import { config } from 'dotenv'
 import { z } from 'zod'
+
+config({
+    path: path.resolve(import.meta.dirname, '../../../.env'),
+})
 
 const envSchema = z.object({
     NODE_ENV: z
@@ -7,6 +12,7 @@ const envSchema = z.object({
         .default('development'),
     PORT: z.coerce.number().int().positive().default(3000),
     CLIENT_ORIGIN: z.url().default('http://localhost:5173'),
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     LOG_LEVEL: z
         .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
         .default('info'),
