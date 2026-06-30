@@ -1,0 +1,57 @@
+generator client {
+    provider   = "prisma-client"
+    output     = "../src/generated/prisma"
+    engineType = "client"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+enum TaskStatus {
+    todo
+    in_progress
+    done
+
+    @@map("task_status")
+}
+
+enum TaskPriority {
+    low
+    medium
+    high
+
+    @@map("task_priority")
+}
+
+model User {
+    id           String   @id @default(uuid())            @db.Uuid
+    name         String   @db.VarChar(100)
+    email        String   @unique(map: "users_email_key") @db.VarChar(255)
+    passwordHash String   @map("password_hash")           @db.VarChar(255)
+    createdAt    DateTime @default(now())                 @map("created_at") @db.Timestamptz(3)
+    updatedAt    DateTime @updatedAt                      @map("updated_at") @db.Timestamptz(3)
+    tasks        Task[]
+
+    @@map("users")
+}
+
+model Task {
+    id          String       @id @default(uuid())                                             @db.Uuid
+    userId      String       @map("user_id")                                                  @db.Uuid
+    title       String       @db.VarChar(200)
+    description String?      @db.Text
+    status      TaskStatus   @default(todo)
+    priority    TaskPriority @default(medium)
+    dueDate     DateTime?    @map("due_date")                                                 @db.Date
+    createdAt   DateTime     @default(now())                                                  @map("created_at") @db.Timestamptz(3)
+    updatedAt   DateTime     @updatedAt @map("updated_at")                                    @db.Timestamptz(3)
+    user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId], map: "tasks_user_id_idx")
+    @@index([userId, status], map: "tasks_user_id_status_idx")
+    @@index([userId, priority], map: "tasks_user_id_priority_idx")
+    @@index([userId, createdAt], map: "tasks_user_id_created_at_idx")
+    @@index([userId, dueDate], map: "tasks_user_id_due_date_idx")
+    @@map("tasks")
+}
