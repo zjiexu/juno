@@ -136,6 +136,45 @@ describe('POST /api/v1/auth/login', () => {
     })
 })
 
+describe('GET /api/v1/auth/me', () => {
+    it('returns the current user for a valid authentication cookie', async () => {
+        const agent = request.agent(app)
+
+        await agent.post('/api/v1/auth/register').send(testUser)
+
+        const response = await agent.get('/api/v1/auth/me')
+
+        expect(response.status).toBe(200)
+        expect(response.body.data.user).toMatchObject({
+            name: testUser.name,
+            email: testUser.email,
+        })
+        expect(response.body.data.user).not.toHaveProperty('passwordHash')
+    })
+
+    it('rejects a request without an authentication cookie', async () => {
+        const response = await request(app).get('/api/v1/auth/me')
+
+        expect(response.status).toBe(401)
+        expect(response.body.error).toEqual({
+            code: 'UNAUTHENTICATED',
+            message: 'Authentication required',
+        })
+    })
+
+    it('rejects an invalid authentication token', async () => {
+        const response = await request(app)
+            .get('/api/v1/auth/me')
+            .set('Cookie', 'juno_session=invalid-token')
+
+        expect(response.status).toBe(401)
+        expect(response.body.error).toEqual({
+            code: 'UNAUTHENTICATED',
+            message: 'Authentication required',
+        })
+    })
+})
+
 describe('POST /api/v1/auth/logout', () => {
     it('clears the authentication cookie', async () => {
         const response = await request(app)

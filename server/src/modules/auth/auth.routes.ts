@@ -3,6 +3,7 @@ import { rateLimit } from 'express-rate-limit'
 import { z } from 'zod'
 import { AppError } from '../../errors/app-error.js'
 import { Prisma } from '../../generated/prisma/client.js'
+import { requireAuth } from '../../middleware/require-auth.js'
 import { signAuthToken } from '../../lib/auth-token.js'
 import { hashPassword, verifyPassword } from '../../lib/password.js'
 import { prisma } from '../../lib/prisma.js'
@@ -126,6 +127,45 @@ authRouter.post('/login', authRateLimiter, async (request, response) => {
     response.status(200).json({
         data: {
             user: authenticatedUser,
+        },
+    })
+})
+
+authRouter.get('/me', requireAuth, async (request, response) => {
+    const userId = request.auth?.userId
+
+    if (!userId) {
+        throw new AppError(
+            401,
+            'UNAUTHENTICATED',
+            'Authentication required',
+        )
+    }
+
+    const user = await prisma.user.findUnique({
+        where: {
+            id: userId,
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+    })
+
+    if (!user) {
+        throw new AppError(
+            401,
+            'UNAUTHENTICATED',
+            'Authentication required',
+        )
+    }
+
+    response.status(200).json({
+        data: {
+            user,
         },
     })
 })
