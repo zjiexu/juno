@@ -4,10 +4,13 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error.js'
 import { Prisma } from '../../generated/prisma/client.js'
 import { signAuthToken } from '../../lib/auth-token.js'
-import { hashPassword } from '../../lib/password.js'
+import { hashPassword, verifyPassword } from '../../lib/password.js'
 import { prisma } from '../../lib/prisma.js'
-import { setAuthCookie } from './auth-cookie.js'
-import { registerInputSchema } from './auth.schemas.js'
+import { clearAuthCookie, setAuthCookie } from './auth-cookie.js'
+import {
+    loginInputSchema,
+    registerInputSchema,
+} from './auth.schemas.js'
 
 export const authRouter = Router()
 
@@ -77,4 +80,57 @@ authRouter.post('/register', authRateLimiter, async (request, response) => {
 
         throw error
     }
+})
+
+authRouter.post('/login', authRateLimiter, async (request, response) => {
+    const parsedInput = loginInputSchema.safeParse(request.body)
+
+    if (!parsedInput.success) {
+        throw new AppError(
+            400,
+            'VALIDATION_ERROR',
+            'Invalid login data',
+            z.flattenError(parsedInput.error).fieldErrors,
+        )
+    }
+
+    const { email, password } = parsedInput.data
+    const user = await prisma.user.findUnique({
+        where: {
+            email,
+        },
+    })
+
+    if (!user) {
+        throw new AppError(
+            401,
+            'INVALID_CREDENTIALS',
+            'Invalid email or password',
+        )
+    }
+
+    const { passwordHash, ...authenticatedUser } = user
+    const passwordIsValid = await verifyPassword(passwordHash, password)
+
+    if (!passwordIsValid) {
+        throw new AppError(
+            401,
+            'INVALID_CREDENTIALS',
+            'Invalid email or password',
+        )
+    }
+
+    const token = await signAuthToken(user.id)
+    setAuthCookie(response, token)
+
+    response.status(200).json({
+        data: {
+            user: authenticatedUser,
+        },
+    })
+})
+
+authRouter.post('/logout', (_request, response) => {
+    clearAuthCookie(response)
+    response.status(204).send()
 })

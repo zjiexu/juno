@@ -37,13 +37,11 @@ describe('POST /api/v1/auth/register', () => {
         })
         expect(response.body.data.user).not.toHaveProperty('passwordHash')
 
-        const setCookieHeader = response.headers['set-cookie'] as
-            | string[]
-            | undefined
+        const setCookieHeader = String(response.headers['set-cookie'])
 
-        expect(setCookieHeader?.[0]).toContain('juno_session=')
-        expect(setCookieHeader?.[0]).toContain('HttpOnly')
-        expect(setCookieHeader?.[0]).toContain('SameSite=Lax')
+        expect(setCookieHeader).toContain('juno_session=')
+        expect(setCookieHeader).toContain('HttpOnly')
+        expect(setCookieHeader).toContain('SameSite=Lax')
 
         const storedUser = await prisma.user.findUnique({
             where: {
@@ -78,5 +76,79 @@ describe('POST /api/v1/auth/register', () => {
 
         expect(response.status).toBe(409)
         expect(response.body.error.code).toBe('EMAIL_ALREADY_IN_USE')
+    })
+})
+
+describe('POST /api/v1/auth/login', () => {
+    beforeEach(async () => {
+        await request(app).post('/api/v1/auth/register').send(testUser)
+    })
+
+    it('logs in with valid credentials', async () => {
+        const response = await request(app)
+            .post('/api/v1/auth/login')
+            .send({
+                email: ` ${testUser.email.toUpperCase()} `,
+                password: testUser.password,
+            })
+
+        expect(response.status).toBe(200)
+        expect(response.body.data.user).toMatchObject({
+            name: testUser.name,
+            email: testUser.email,
+        })
+        expect(response.body.data.user).not.toHaveProperty('passwordHash')
+
+        const setCookieHeader = String(response.headers['set-cookie'])
+
+        expect(setCookieHeader).toContain('juno_session=')
+        expect(setCookieHeader).toContain('HttpOnly')
+    })
+
+    it('rejects an incorrect password', async () => {
+        const response = await request(app)
+            .post('/api/v1/auth/login')
+            .send({
+                email: testUser.email,
+                password: 'IncorrectPassword123!',
+            })
+
+        expect(response.status).toBe(401)
+        expect(response.body.error).toEqual({
+            code: 'INVALID_CREDENTIALS',
+            message: 'Invalid email or password',
+        })
+    })
+
+    it('rejects an unknown email with the same error', async () => {
+        const response = await request(app)
+            .post('/api/v1/auth/login')
+            .send({
+                email: 'unknown@example.com',
+                password: testUser.password,
+            })
+
+        expect(response.status).toBe(401)
+        expect(response.body.error).toEqual({
+            code: 'INVALID_CREDENTIALS',
+            message: 'Invalid email or password',
+        })
+    })
+})
+
+describe('POST /api/v1/auth/logout', () => {
+    it('clears the authentication cookie', async () => {
+        const response = await request(app)
+            .post('/api/v1/auth/logout')
+            .set('Cookie', 'juno_session=test-token')
+
+        expect(response.status).toBe(204)
+
+        const setCookieHeader = String(response.headers['set-cookie'])
+
+        expect(setCookieHeader).toContain('juno_session=;')
+        expect(setCookieHeader).toContain(
+            'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        )
     })
 })
