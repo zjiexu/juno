@@ -220,3 +220,179 @@ describe('GET /api/v1/tasks', () => {
         expect(response.body.error.code).toBe('UNAUTHENTICATED')
     })
 })
+
+describe('GET /api/v1/tasks/:taskId', () => {
+    it('returns a task owned by the current user', async () => {
+        const agent = await createAuthenticatedAgent()
+
+        const createResponse = await agent.post('/api/v1/tasks').send({
+            title: 'Read this task',
+            priority: 'high',
+        })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent.get(`/api/v1/tasks/${taskId}`)
+
+        expect(response.status).toBe(200)
+        expect(response.body.data.task).toMatchObject({
+            id: taskId,
+            title: 'Read this task',
+            priority: 'high',
+        })
+    })
+
+    it('does not expose another user task', async () => {
+        const agent = await createAuthenticatedAgent()
+        const otherAgent = await createAuthenticatedAgent(otherTestUser)
+
+        const createResponse = await otherAgent
+            .post('/api/v1/tasks')
+            .send({
+                title: 'Other user task',
+            })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent.get(`/api/v1/tasks/${taskId}`)
+
+        expect(response.status).toBe(404)
+        expect(response.body.error.code).toBe('TASK_NOT_FOUND')
+    })
+
+    it('rejects an invalid task ID', async () => {
+        const agent = await createAuthenticatedAgent()
+        const response = await agent.get('/api/v1/tasks/not-a-uuid')
+
+        expect(response.status).toBe(400)
+        expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    })
+})
+
+describe('PATCH /api/v1/tasks/:taskId', () => {
+    it('updates only the provided task fields', async () => {
+        const agent = await createAuthenticatedAgent()
+
+        const createResponse = await agent.post('/api/v1/tasks').send({
+            title: 'Original task',
+            description: 'Original description',
+            priority: 'high',
+            dueDate: '2026-07-20',
+        })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent
+            .patch(`/api/v1/tasks/${taskId}`)
+            .send({
+                title: 'Updated task',
+                description: null,
+                status: 'done',
+                dueDate: null,
+            })
+
+        expect(response.status).toBe(200)
+        expect(response.body.data.task).toMatchObject({
+            id: taskId,
+            title: 'Updated task',
+            description: null,
+            status: 'done',
+            priority: 'high',
+            dueDate: null,
+        })
+    })
+
+    it('rejects an empty update', async () => {
+        const agent = await createAuthenticatedAgent()
+
+        const createResponse = await agent.post('/api/v1/tasks').send({
+            title: 'Unchanged task',
+        })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent
+            .patch(`/api/v1/tasks/${taskId}`)
+            .send({})
+
+        expect(response.status).toBe(400)
+        expect(response.body.error.code).toBe('VALIDATION_ERROR')
+        expect(response.body.error.message).toBe(
+            'At least one task field is required',
+        )
+    })
+
+    it('does not update another user task', async () => {
+        const agent = await createAuthenticatedAgent()
+        const otherAgent = await createAuthenticatedAgent(otherTestUser)
+
+        const createResponse = await otherAgent
+            .post('/api/v1/tasks')
+            .send({
+                title: 'Protected task',
+            })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent
+            .patch(`/api/v1/tasks/${taskId}`)
+            .send({
+                title: 'Unauthorized update',
+            })
+
+        expect(response.status).toBe(404)
+        expect(response.body.error.code).toBe('TASK_NOT_FOUND')
+
+        const unchangedResponse = await otherAgent.get(
+            `/api/v1/tasks/${taskId}`,
+        )
+
+        expect(unchangedResponse.body.data.task.title).toBe(
+            'Protected task',
+        )
+    })
+})
+
+describe('DELETE /api/v1/tasks/:taskId', () => {
+    it('deletes a task owned by the current user', async () => {
+        const agent = await createAuthenticatedAgent()
+
+        const createResponse = await agent.post('/api/v1/tasks').send({
+            title: 'Delete this task',
+        })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent.delete(`/api/v1/tasks/${taskId}`)
+
+        expect(response.status).toBe(204)
+
+        const deletedTask = await prisma.task.findUnique({
+            where: {
+                id: taskId,
+            },
+        })
+
+        expect(deletedTask).toBeNull()
+    })
+
+    it('does not delete another user task', async () => {
+        const agent = await createAuthenticatedAgent()
+        const otherAgent = await createAuthenticatedAgent(otherTestUser)
+
+        const createResponse = await otherAgent
+            .post('/api/v1/tasks')
+            .send({
+                title: 'Do not delete',
+            })
+
+        const taskId = createResponse.body.data.task.id
+        const response = await agent.delete(`/api/v1/tasks/${taskId}`)
+
+        expect(response.status).toBe(404)
+        expect(response.body.error.code).toBe('TASK_NOT_FOUND')
+
+        const unchangedResponse = await otherAgent.get(
+            `/api/v1/tasks/${taskId}`,
+        )
+
+        expect(unchangedResponse.status).toBe(200)
+        expect(unchangedResponse.body.data.task.title).toBe(
+            'Do not delete',
+        )
+    })
+})

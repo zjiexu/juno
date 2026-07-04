@@ -1,12 +1,14 @@
 import { Router, type Request } from 'express'
 import { z } from 'zod'
 import { AppError } from '../../errors/app-error.js'
-import type { Prisma } from '../../generated/prisma/client.js'
+import { Prisma } from '../../generated/prisma/client.js'
 import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/require-auth.js'
 import {
     createTaskInputSchema,
     listTasksQuerySchema,
+    taskParamsSchema,
+    updateTaskInputSchema,
 } from './task.schemas.js'
 
 export const taskRouter = Router()
@@ -25,6 +27,21 @@ const getAuthenticatedUserId = (request: Request) => {
     }
 
     return userId
+}
+
+const getTaskId = (request: Request) => {
+    const parsedParams = taskParamsSchema.safeParse(request.params)
+
+    if (!parsedParams.success) {
+        throw new AppError(
+            400,
+            'VALIDATION_ERROR',
+            'Invalid task ID',
+            z.flattenError(parsedParams.error).fieldErrors,
+        )
+    }
+
+    return parsedParams.data.taskId
 }
 
 taskRouter.get('/', async (request, response) => {
@@ -124,6 +141,32 @@ taskRouter.get('/', async (request, response) => {
     })
 })
 
+taskRouter.get('/:taskId', async (request, response) => {
+    const userId = getAuthenticatedUserId(request)
+    const taskId = getTaskId(request)
+
+    const task = await prisma.task.findFirst({
+        where: {
+            id: taskId,
+            userId,
+        },
+    })
+
+    if (!task) {
+        throw new AppError(
+            404,
+            'TASK_NOT_FOUND',
+            'Task not found',
+        )
+    }
+
+    response.status(200).json({
+        data: {
+            task,
+        },
+    })
+})
+
 taskRouter.post('/', async (request, response) => {
     const parsedInput = createTaskInputSchema.safeParse(request.body)
 
@@ -164,4 +207,118 @@ taskRouter.post('/', async (request, response) => {
             task,
         },
     })
+})
+
+taskRouter.patch('/:taskId', async (request, response) => {
+    const userId = getAuthenticatedUserId(request)
+    const taskId = getTaskId(request)
+    const parsedInput = updateTaskInputSchema.safeParse(request.body)
+
+    if (!parsedInput.success) {
+        throw new AppError(
+            400,
+            'VALIDATION_ERROR',
+            'Invalid task data',
+            z.flattenError(parsedInput.error).fieldErrors,
+        )
+    }
+
+    if (Object.keys(parsedInput.data).length === 0) {
+        throw new AppError(
+            400,
+            'VALIDATION_ERROR',
+            'At least one task field is required',
+        )
+    }
+
+    const {
+        title,
+        description,
+        status,
+        priority,
+        dueDate,
+    } = parsedInput.data
+
+    const data: Prisma.TaskUpdateInput = {}
+
+    if (title !== undefined) {
+        data.title = title
+    }
+
+    if (description !== undefined) {
+        data.description = description
+    }
+
+    if (status !== undefined) {
+        data.status = status
+    }
+
+    if (priority !== undefined) {
+        data.priority = priority
+    }
+
+    if (dueDate !== undefined) {
+        data.dueDate =
+            dueDate === null
+                ? null
+                : new Date(`${dueDate}T00:00:00.000Z`)
+    }
+
+    try {
+        const task = await prisma.task.update({
+            where: {
+                id: taskId,
+                userId,
+            },
+            data,
+        })
+
+        response.status(200).json({
+            data: {
+                task,
+            },
+        })
+    } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2025'
+        ) {
+            throw new AppError(
+                404,
+                'TASK_NOT_FOUND',
+                'Task not found',
+            )
+        }
+
+        throw error
+    }
+})
+
+taskRouter.delete('/:taskId', async (request, response) => {
+    const userId = getAuthenticatedUserId(request)
+    const taskId = getTaskId(request)
+
+    try {
+        await prisma.task.delete({
+            where: {
+                id: taskId,
+                userId,
+            },
+        })
+
+        response.status(204).send()
+    } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2025'
+        ) {
+            throw new AppError(
+                404,
+                'TASK_NOT_FOUND',
+                'Task not found',
+            )
+        }
+
+        throw error
+    }
 })

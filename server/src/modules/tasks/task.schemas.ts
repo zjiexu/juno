@@ -33,6 +33,17 @@ export const createTaskInputSchema = z
 
 export type CreateTaskInput = z.infer<typeof createTaskInputSchema>
 
+export const taskParamsSchema = z
+    .object({
+        taskId: z.uuid('Task ID must be a valid UUID'),
+    })
+    .strict()
+
+export const updateTaskInputSchema = createTaskInputSchema.partial()
+
+export type TaskParams = z.infer<typeof taskParamsSchema>
+export type UpdateTaskInput = z.infer<typeof updateTaskInputSchema>
+
 export const listTasksQuerySchema = z
     .object({
         search: z
